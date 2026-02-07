@@ -116,17 +116,23 @@ class DescriptionRequest(BaseModel):
 # =========================
 @app.get("/book/isbn/{isbn}")
 def get_book_by_isbn(isbn: str):
-    conn = get_db_connection()
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM books WHERE ISBN = ?", (isbn,))
     row = cursor.fetchone()
-    conn.close()
 
     if row is None:
+        conn.close()
         raise HTTPException(status_code=404, detail="Book not found")
 
-    return {key: row[key] for key in row.keys()}
+    # ✅ SAFE conversion: tuple → dict
+    columns = [desc[0] for desc in cursor.description]
+    result = dict(zip(columns, row))
+
+    conn.close()
+    return result
+
 
 
 
