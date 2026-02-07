@@ -126,7 +126,8 @@ def get_book_by_isbn(isbn: str):
     if row is None:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    return dict(row)
+    return dict(row)  # ✅ now works
+
 
 
 @app.post("/recommend")
@@ -140,10 +141,10 @@ def recommend_books(request: DescriptionRequest):
 
     if isinstance(parsed, tuple):
         topic = parsed[0]
-        k = parsed[1] if len(parsed) > 1 else 5
+        k = parsed[1] if len(parsed) > 1 else 15
     else:
         topic = parsed
-        k = 5
+        k = 15
 
     query_vec = model.encode([topic])
     similarities = cosine_similarity(query_vec, embeddings)
