@@ -1,26 +1,25 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import sqlite3
 import numpy as np
 import pickle
 import pandas as pd
+import os
 
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from huggingface_hub import hf_hub_download
 
-# Reuse query parser from your recommender file
 from book_recommender import parse_query
 
 
 # =========================
-# APP INITIALIZATION
+# APP INIT
 # =========================
 app = FastAPI(title="Book Recommendation API")
 
-# Allow frontend access (safe for local/dev)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,18 +27,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve frontend
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+@app.get("/")
+def health():
+    return {"status": "ok"}
 
 
 # =========================
-# PATH CONFIG
+# HF CONFIG
 # =========================
-import os
-from huggingface_hub import hf_hub_download
-
+HF_REPO_ID = "dummy9016/book-recommender-assets"
 HF_TOKEN = os.getenv("HF_TOKEN")
-HF_REPO_ID = os.getenv("HF_REPO_ID")
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -48,31 +45,24 @@ EMBEDDINGS_FILE = "book_embeddings.npy"
 METADATA_FILE = "books_metadata.pkl"
 
 
-
 # =========================
-# GLOBAL OBJECTS
+# GLOBALS
 # =========================
 model = None
 embeddings = None
 df = None
+DB_PATH = None
 
 
 # =========================
-# LOAD EVERYTHING ONCE
+# STARTUP
 # =========================
-from fastapi.responses import FileResponse
-
-@app.get("/")
-def serve_frontend():
-    return FileResponse("frontend/index.html")
- 
 @app.on_event("startup")
 def load_assets():
     global model, embeddings, df, DB_PATH
 
     print("🚀 Loading assets from Hugging Face...")
 
-    # Download files from Hugging Face
     DB_PATH = hf_hub_download(
         repo_id=HF_REPO_ID,
         filename=DB_FILE,
@@ -91,48 +81,39 @@ def load_assets():
         token=HF_TOKEN
     )
 
-    # Load model (SentenceTransformer auto-downloads)
     model = SentenceTransformer(MODEL_NAME)
-
-    # Load embeddings + metadata
     embeddings = np.load(embeddings_path)
 
     with open(metadata_path, "rb") as f:
         df = pickle.load(f)
 
-    print("✅ All assets loaded successfully")
+    print("✅ Assets loaded")
 
 
 # =========================
-# DATABASE UTILS
+# DB
 # =========================
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
 # =========================
-# REQUEST SCHEMA
+# SCHEMA
 # =========================
 class DescriptionRequest(BaseModel):
     description: str
 
 
 # =========================
-# ENDPOINT 1: FETCH BY ISBN
+# ENDPOINTS
 # =========================
 @app.get("/book/isbn/{isbn}")
 def get_book_by_isbn(isbn: str):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM books WHERE ISBN = ?",
-        (isbn,)
-    )
-
-    row = cursor.fetchone()
+    cur.execute("SELECT * FROM books WHERE ISBN = ?", (isbn,))
+    row = cur.fetchone()
     conn.close()
 
     if row is None:
@@ -141,72 +122,50 @@ def get_book_by_isbn(isbn: str):
     return dict(row)
 
 
-# =========================
-# ENDPOINT 2: RECOMMEND BY DESCRIPTION (ML)
-# =========================
 @app.post("/recommend")
 def recommend_books(request: DescriptionRequest):
-    try:
-        text = request.description.strip()
+    text = request.description.strip()
 
-        if len(text) < 3:
-            raise HTTPException(
-                status_code=400,
-                detail="Description too short"
-            )
+    if len(text) < 3:
+        raise HTTPException(status_code=400, detail="Description too short")
 
-        parsed = parse_query(text)
+    parsed = parse_query(text)
+    topic, k = (parsed + (5,))[:2] if isinstance(parsed, tuple) else (parsed, 5)
 
-        if isinstance(parsed, tuple):
-            topic = parsed[0]
-            k = parsed[1] if len(parsed) > 1 else 5
-        else:
-            topic = parsed
-            k = 5
+    query_vec = model.encode([topic])
+    sims = cosine_similarity(query_vec, embeddings)
 
-        query_vec = model.encode([topic])
-        similarities = cosine_similarity(query_vec, embeddings)
+    k = min(k, sims.shape[1])
+    top_idx = sims[0].argsort()[-k:][::-1]
 
-        k = min(k, similarities.shape[1])
-        top_indices = similarities[0].argsort()[-k:][::-1]
+    results_df = df.iloc[top_idx]
 
-        results_df = df.iloc[top_indices]
-
-        # 🔥 CRITICAL FIX: force Python-native types
-        results = []
-        for _, row in results_df.iterrows():
-            results.append({
-                "Acc_No": int(row["Acc_No"]) if not pd.isna(row["Acc_No"]) else None,
-                "Title": str(row["Title"]),
-                "Author_Editor": str(row["Author_Editor"]),
-                "ISBN": str(row["ISBN"]),
-                "Year": int(row["Year"]) if not pd.isna(row["Year"]) else None,
-                "description": str(row["description"]),
-                "image_url": str(row["image_url"]) if "image_url" in row else None
-            })
-
-        return {
-            "query": text,
-            "results": results
-        }
-
-    except Exception as e:
-        print("❌ ERROR IN /recommend:", repr(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Internal recommendation error"
-        )
-@app.get("/random")
-def get_random_books():
-    sample_df = df.sample(n=min(15, len(df)))
     results = []
-
-    for _, row in sample_df.iterrows():
+    for _, row in results_df.iterrows():
         results.append({
+            "Acc_No": int(row["Acc_No"]) if not pd.isna(row["Acc_No"]) else None,
             "Title": str(row["Title"]),
             "Author_Editor": str(row["Author_Editor"]),
+            "ISBN": str(row["ISBN"]),
+            "Year": int(row["Year"]) if not pd.isna(row["Year"]) else None,
             "description": str(row["description"]),
             "image_url": str(row.get("image_url", ""))
         })
 
-    return {"results": results}
+    return {"query": text, "results": results}
+
+
+@app.get("/random")
+def get_random_books():
+    sample_df = df.sample(n=min(15, len(df)))
+    return {
+        "results": [
+            {
+                "Title": str(r["Title"]),
+                "Author_Editor": str(r["Author_Editor"]),
+                "description": str(r["description"]),
+                "image_url": str(r.get("image_url", ""))
+            }
+            for _, r in sample_df.iterrows()
+        ]
+    }
