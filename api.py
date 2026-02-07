@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import sqlite3
@@ -18,7 +20,7 @@ from book_recommender import parse_query
 # =========================
 # APP INIT
 # =========================
-app = FastAPI(title="Book Recommendation API")
+app = FastAPI(title="Book Recommendation System")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,9 +29,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# =========================
+# SERVE FRONTEND
+# =========================
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
 @app.get("/")
-def health():
-    return {"status": "ok"}
+def home():
+    return FileResponse("frontend/index.html")
 
 
 # =========================
@@ -87,33 +94,33 @@ def load_assets():
     with open(metadata_path, "rb") as f:
         df = pickle.load(f)
 
-    print("✅ Assets loaded")
+    print("✅ Assets loaded successfully")
 
 
 # =========================
-# DB
+# DB UTILS
 # =========================
 def get_db_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
 # =========================
-# SCHEMA
+# REQUEST SCHEMA
 # =========================
 class DescriptionRequest(BaseModel):
     description: str
 
 
 # =========================
-# ENDPOINTS
+# API ENDPOINTS
 # =========================
 @app.get("/book/isbn/{isbn}")
 def get_book_by_isbn(isbn: str):
     conn = get_db_connection()
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
-    cur.execute("SELECT * FROM books WHERE ISBN = ?", (isbn,))
-    row = cur.fetchone()
+    cursor.execute("SELECT * FROM books WHERE ISBN = ?", (isbn,))
+    row = cursor.fetchone()
     conn.close()
 
     if row is None:
@@ -130,15 +137,21 @@ def recommend_books(request: DescriptionRequest):
         raise HTTPException(status_code=400, detail="Description too short")
 
     parsed = parse_query(text)
-    topic, k = (parsed + (5,))[:2] if isinstance(parsed, tuple) else (parsed, 5)
+
+    if isinstance(parsed, tuple):
+        topic = parsed[0]
+        k = parsed[1] if len(parsed) > 1 else 5
+    else:
+        topic = parsed
+        k = 5
 
     query_vec = model.encode([topic])
-    sims = cosine_similarity(query_vec, embeddings)
+    similarities = cosine_similarity(query_vec, embeddings)
 
-    k = min(k, sims.shape[1])
-    top_idx = sims[0].argsort()[-k:][::-1]
+    k = min(k, similarities.shape[1])
+    top_indices = similarities[0].argsort()[-k:][::-1]
 
-    results_df = df.iloc[top_idx]
+    results_df = df.iloc[top_indices]
 
     results = []
     for _, row in results_df.iterrows():
@@ -152,7 +165,10 @@ def recommend_books(request: DescriptionRequest):
             "image_url": str(row.get("image_url", ""))
         })
 
-    return {"query": text, "results": results}
+    return {
+        "query": text,
+        "results": results
+    }
 
 
 @app.get("/random")
@@ -161,11 +177,11 @@ def get_random_books():
     return {
         "results": [
             {
-                "Title": str(r["Title"]),
-                "Author_Editor": str(r["Author_Editor"]),
-                "description": str(r["description"]),
-                "image_url": str(r.get("image_url", ""))
+                "Title": str(row["Title"]),
+                "Author_Editor": str(row["Author_Editor"]),
+                "description": str(row["description"]),
+                "image_url": str(row.get("image_url", ""))
             }
-            for _, r in sample_df.iterrows()
+            for _, row in sample_df.iterrows()
         ]
     }
