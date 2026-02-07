@@ -126,7 +126,8 @@ def get_book_by_isbn(isbn: str):
     if row is None:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    return dict(row)  # ✅ now works
+    return {key: row[key] for key in row.keys()}
+
 
 
 
