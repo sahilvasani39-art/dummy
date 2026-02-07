@@ -35,10 +35,18 @@ app.mount("/static", StaticFiles(directory="frontend"), name="static")
 # =========================
 # PATH CONFIG
 # =========================
-DB_PATH = "books.db"
-EMBEDDINGS_PATH = "book_embeddings.npy"
-METADATA_PATH = "books_metadata.pkl"
+import os
+from huggingface_hub import hf_hub_download
+
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_REPO_ID = os.getenv("HF_REPO_ID")
+
 MODEL_NAME = "all-MiniLM-L6-v2"
+
+DB_FILE = "books.db"
+EMBEDDINGS_FILE = "book_embeddings.npy"
+METADATA_FILE = "books_metadata.pkl"
+
 
 
 # =========================
@@ -60,21 +68,39 @@ def serve_frontend():
  
 @app.on_event("startup")
 def load_assets():
-    global model, embeddings, df
+    global model, embeddings, df, DB_PATH
 
-    print("🚀 Loading model, embeddings, and metadata...")
+    print("🚀 Loading assets from Hugging Face...")
 
-    # Load transformer model (NO training)
+    # Download files from Hugging Face
+    DB_PATH = hf_hub_download(
+        repo_id=HF_REPO_ID,
+        filename=DB_FILE,
+        token=HF_TOKEN
+    )
+
+    embeddings_path = hf_hub_download(
+        repo_id=HF_REPO_ID,
+        filename=EMBEDDINGS_FILE,
+        token=HF_TOKEN
+    )
+
+    metadata_path = hf_hub_download(
+        repo_id=HF_REPO_ID,
+        filename=METADATA_FILE,
+        token=HF_TOKEN
+    )
+
+    # Load model (SentenceTransformer auto-downloads)
     model = SentenceTransformer(MODEL_NAME)
 
-    # Load saved embeddings
-    embeddings = np.load(EMBEDDINGS_PATH)
+    # Load embeddings + metadata
+    embeddings = np.load(embeddings_path)
 
-    # Load metadata dataframe
-    with open(METADATA_PATH, "rb") as f:
+    with open(metadata_path, "rb") as f:
         df = pickle.load(f)
 
-    print("✅ Assets loaded successfully (no recomputation)")
+    print("✅ All assets loaded successfully")
 
 
 # =========================
