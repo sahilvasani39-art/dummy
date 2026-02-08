@@ -339,4 +339,10 @@ Specialist in Data Engineering, Vector Databases, and Cloud AI deployment strate
 ### 📖 Recommendation Results
 ![Recommendation Results UI](images/ui_results.png)
 
+
 --- 
+
+## 🚀 Public URL :
+URL : dummy-production-0b7e.up.railway.app
+
+---
