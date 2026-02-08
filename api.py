@@ -32,7 +32,12 @@ app.add_middleware(
 # =========================
 # SERVE FRONTEND
 # =========================
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+if Path("frontend").exists():
+    app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
 
 @app.get("/")
 def home():
