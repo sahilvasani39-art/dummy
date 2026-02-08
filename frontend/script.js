@@ -1,6 +1,6 @@
 let mode = "desc";
 
-// Tab switch
+/* ================= TAB SWITCH ================= */
 function switchTab(tab) {
     mode = tab;
 
@@ -11,38 +11,86 @@ function switchTab(tab) {
     document.getElementById("descInput").disabled = tab !== "desc";
 }
 
-// Search handler
+/* ================= SEARCH HANDLER ================= */
 async function search() {
     if (mode === "isbn") {
-        searchByISBN();
+        await searchByISBN();
     } else {
-        searchByDescription();
+        await searchByDescription();
     }
 }
 
-// ISBN
+/* ================= UI HELPERS ================= */
+function setLoading(isLoading, message = "Searching for the best matches...") {
+    const btn = document.getElementById("searchBtn");
+    const btnText = document.getElementById("btnText");
+    const loader = document.getElementById("btnLoader");
+    const container = document.getElementById("results");
+
+    if (isLoading) {
+        btn.disabled = true;
+        btnText.textContent = "Searching...";
+        loader.classList.remove("hidden");
+
+        container.innerHTML = `
+            <p style="color:white; font-size:1.1rem;">
+                🔍 ${message}
+            </p>
+        `;
+    } else {
+        btn.disabled = false;
+        btnText.textContent = "Find My Recommendations";
+        loader.classList.add("hidden");
+    }
+}
+
+/* ================= ISBN SEARCH ================= */
 async function searchByISBN() {
-    const isbn = document.getElementById("isbnInput").value;
-    const res = await fetch(`/book/isbn/${isbn}`);
-    const data = await res.json();
-    renderBooks([data]);
+    const isbn = document.getElementById("isbnInput").value.trim();
+    if (!isbn) return;
+
+    setLoading(true, "Fetching book details by ISBN...");
+
+    try {
+        const res = await fetch(`/book/isbn/${isbn}`);
+        const data = await res.json();
+
+        renderBooks([data]);
+    } catch (err) {
+        document.getElementById("results").innerHTML =
+            `<p style="color:red;">❌ ISBN not found.</p>`;
+        console.error(err);
+    }
+
+    setLoading(false);
 }
 
-// DESCRIPTION
+/* ================= DESCRIPTION SEARCH ================= */
 async function searchByDescription() {
-    const desc = document.getElementById("descInput").value;
+    const desc = document.getElementById("descInput").value.trim();
+    if (!desc) return;
 
-    const res = await fetch(`/recommend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: desc })
-    });
+    setLoading(true, "Understanding your reading taste...");
 
-    const data = await res.json();
-    renderBooks(data.results);
+    try {
+        const res = await fetch(`/recommend`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ description: desc })
+        });
+
+        const data = await res.json();
+        renderBooks(data.results);
+    } catch (err) {
+        document.getElementById("results").innerHTML =
+            `<p style="color:red;">❌ Something went wrong. Try again.</p>`;
+        console.error(err);
+    }
+
+    setLoading(false);
 }
 
-// Render cards
+/* ================= RENDER BOOK CARDS ================= */
 function renderBooks(books) {
     const container = document.getElementById("results");
     container.innerHTML = "";
@@ -54,7 +102,6 @@ function renderBooks(books) {
 
         container.innerHTML += `
             <div class="book-card">
-
                 <div class="cover-wrapper">
                     <span class="match-badge">
                         ${Math.floor(85 + Math.random() * 10)}% Match
@@ -69,14 +116,17 @@ function renderBooks(books) {
                     <div class="book-title clamp-2">${book.Title}</div>
                     <div class="book-author clamp-1">${book.Author_Editor || ""}</div>
                 </div>
-
             </div>
         `;
     });
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-    const res = await fetch("/random");
-    const data = await res.json();
-    renderBooks(data.results);
+    try {
+        const res = await fetch("/random");
+        const data = await res.json();
+        renderBooks(data.results);
+    } catch (err) {
+        console.error("Failed to load random books", err);
+    }
 });
