@@ -113,9 +113,13 @@ The system follows a **Separation of Assets and Logic** pattern, common in moder
 
 ## 📦 Model & Assets Hosting
 
-## 🤗 Hugging Face Model Integration
+This project uses model assets (embeddings, database, and weights) hosted on **Hugging Face Hub** to manage large file sizes and ensure efficient deployment. 
 
-This project uses a pre-trained sentence embedding model hosted on **Hugging Face Hub** to generate dense vector representations of book descriptions. These embeddings enable semantic similarity search for content-based book recommendation.
+### 📂 Model Assets Repository
+All core assets including `.pkl`, `.pt`, `.db`, `.npy`, and `.model` files are hosted at:
+👉 **[huggingface.co/dummy9016/book-recommender-assets](https://huggingface.co/dummy9016/book-recommender-assets/tree/main)**
+
+These embeddings enable semantic similarity search for content-based book recommendation.
 
 ### 📌 Model Used
 - **Model name:** `sentence-transformers/all-MiniLM-L6-v2`
@@ -179,10 +183,10 @@ This design avoids large build artifacts and reduces deployment failures caused 
 
 | Asset | Type | Location | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Code** | Python/JS | GitHub | Application logic and UI |
-| **Embeddings** | `.npy` | Hugging Face | Pre-calculated semantic vectors |
-| **Metadata** | `.pkl` / `.db` | Hugging Face | Book titles/authors/ISBNs |
-| **Model** | Transformer | Hugging Face | Encoding user queries into math |
+| **Code** | Python/JS | [GitHub](https://github.com/sahilvasani39-art/dummy) | Application logic and UI |
+| **Embeddings** | `.npy` | [Hugging Face](https://huggingface.co/dummy9016/book-recommender-assets/tree/main) | Pre-calculated semantic vectors |
+| **Metadata** | `.pkl`, `.db` | [Hugging Face](https://huggingface.co/dummy9016/book-recommender-assets/tree/main) | Book metadata & search database |
+| **Model Weights**| `.pt`, `.model`| [Hugging Face](https://huggingface.co/dummy9016/book-recommender-assets/tree/main) | Query encoding models |
 
 ---
 
